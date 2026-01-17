@@ -10,9 +10,15 @@ import {
   Star, 
   GitFork,
   Menu,
-  Loader2
+  Loader2,
+  Eye,
+  Calendar,
+  X,
+  Clock,
+  Zap
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { GoogleGenAI } from "@google/genai";
 import { GithubRepo, TabType, SavedRepo } from './types';
 
 // Fix for framer-motion type issues in some environments where motion props aren't recognized on motion.div
@@ -20,12 +26,244 @@ const MotionDiv = motion.div as any;
 
 type TimeRange = 'today' | 'week' | 'month';
 
+// Utility to format dates
+const formatDate = (dateString: string) => {
+  return new Date(dateString).toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric'
+  });
+};
+
+// AI Insight Component
+const AIInsight: React.FC<{ repo: GithubRepo }> = ({ repo }) => {
+  const [insight, setInsight] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    const fetchInsight = async () => {
+      setLoading(true);
+      try {
+        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+        const response = await ai.models.generateContent({
+          model: 'gemini-3-flash-preview',
+          contents: `You are an expert software architect. Provide a single, clever, professional 1-sentence insight or a specific high-impact use-case for this GitHub repository. Be concise and technical.
+          Name: ${repo.name}
+          Description: ${repo.description || "No description provided."}`,
+          config: {
+            temperature: 0.7,
+            maxOutputTokens: 60,
+          }
+        });
+        setInsight(response.text || "This repository seems like a solid addition to a modern dev stack.");
+      } catch (error) {
+        console.error("AI Insight failed:", error);
+        setInsight("A trending utility that simplifies complex developer workflows.");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchInsight();
+  }, [repo.id]);
+
+  return (
+    <div className="relative overflow-hidden rounded-2xl border border-indigo-500/20 bg-indigo-500/5 p-5">
+      <div className="flex items-center gap-2 mb-3">
+        <Sparkles size={16} className="text-indigo-400" />
+        <span className="text-[10px] text-indigo-400 mono uppercase tracking-[0.2em] font-bold">AI Glance Insight</span>
+      </div>
+      
+      {loading ? (
+        <div className="space-y-2 animate-pulse">
+          <div className="h-4 bg-indigo-500/10 rounded w-full" />
+          <div className="h-4 bg-indigo-500/10 rounded w-2/3" />
+        </div>
+      ) : (
+        <motion.p 
+          initial={{ opacity: 0, y: 5 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="text-slate-200 text-sm italic leading-relaxed"
+        >
+          "{insight}"
+        </motion.p>
+      )}
+      
+      {/* Background glow effect */}
+      <div className="absolute -right-4 -bottom-4 w-24 h-24 bg-indigo-500/10 blur-3xl rounded-full" />
+    </div>
+  );
+};
+
 // Components
+const RepoDetailModal: React.FC<{
+  repo: GithubRepo;
+  isSaved: boolean;
+  onToggleSave: (repo: GithubRepo) => void;
+  onClose: () => void;
+}> = ({ repo, isSaved, onToggleSave, onClose }) => {
+  return (
+    <MotionDiv
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-[60] flex items-center justify-center p-4 md:p-6 bg-black/80 backdrop-blur-md"
+      onClick={onClose}
+    >
+      <MotionDiv
+        initial={{ opacity: 0, scale: 0.95, y: 20 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.95, y: 20 }}
+        className="relative w-full max-w-2xl bg-[#0D0D0E] border border-white/10 rounded-3xl overflow-hidden shadow-2xl max-h-[90vh] flex flex-col"
+        onClick={(e: React.MouseEvent) => e.stopPropagation()}
+      >
+        {/* Close Button */}
+        <button 
+          onClick={onClose}
+          className="absolute top-6 right-6 p-2 rounded-full text-slate-500 hover:text-white hover:bg-white/5 transition-colors z-10"
+        >
+          <X size={20} />
+        </button>
+
+        <div className="overflow-y-auto">
+          {/* Hero Section */}
+          <div className="p-8 md:p-10 border-b border-white/5 bg-gradient-to-b from-indigo-500/5 to-transparent">
+            <div className="flex items-center gap-4 mb-6">
+              <img 
+                src={repo.owner.avatar_url} 
+                alt={repo.owner.login} 
+                className="w-12 h-12 rounded-full ring-2 ring-indigo-500/20 shadow-xl"
+              />
+              <div className="flex flex-col">
+                <span className="text-sm text-indigo-400 mono font-medium">
+                  {repo.owner.login}
+                </span>
+                <h2 className="text-2xl font-bold text-white tracking-tight">
+                  {repo.name}
+                </h2>
+              </div>
+            </div>
+
+            <p className="text-slate-300 text-lg leading-relaxed mb-8">
+              {repo.description || "No description provided."}
+            </p>
+
+            {/* AI Insight Section */}
+            <div className="mb-8">
+              <AIInsight repo={repo} />
+            </div>
+
+            <div className="flex flex-wrap gap-4 items-center">
+              <div className="flex items-center gap-6 bg-white/[0.03] border border-white/5 px-6 py-3 rounded-2xl">
+                <div className="flex flex-col items-center gap-1">
+                  <span className="text-[10px] text-slate-500 mono uppercase tracking-wider">Stars</span>
+                  <div className="flex items-center gap-1.5 text-white font-semibold">
+                    <Star size={14} className="text-amber-400" />
+                    <span>{repo.stargazers_count.toLocaleString()}</span>
+                  </div>
+                </div>
+                <div className="w-px h-8 bg-white/5" />
+                <div className="flex flex-col items-center gap-1">
+                  <span className="text-[10px] text-slate-500 mono uppercase tracking-wider">Forks</span>
+                  <div className="flex items-center gap-1.5 text-white font-semibold">
+                    <GitFork size={14} className="text-slate-400" />
+                    <span>{repo.forks_count.toLocaleString()}</span>
+                  </div>
+                </div>
+                <div className="w-px h-8 bg-white/5" />
+                <div className="flex flex-col items-center gap-1">
+                  <span className="text-[10px] text-slate-500 mono uppercase tracking-wider">Watchers</span>
+                  <div className="flex items-center gap-1.5 text-white font-semibold">
+                    <Eye size={14} className="text-indigo-400" />
+                    <span>{repo.watchers_count.toLocaleString()}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 ml-auto">
+                <button 
+                  onClick={() => onToggleSave(repo)}
+                  className={`flex items-center gap-2 px-5 py-3 rounded-2xl transition-all duration-300 font-medium text-sm ${
+                    isSaved 
+                      ? 'text-indigo-400 bg-indigo-500/10 border border-indigo-500/20' 
+                      : 'text-white bg-white/5 border border-white/10 hover:bg-white/10'
+                  }`}
+                >
+                  <Bookmark size={16} fill={isSaved ? "currentColor" : "none"} />
+                  {isSaved ? "Saved" : "Save Repo"}
+                </button>
+                <a 
+                  href={repo.html_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-2 px-5 py-3 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white font-medium text-sm transition-all shadow-lg shadow-indigo-600/20"
+                >
+                  <ExternalLink size={16} />
+                  Open GitHub
+                </a>
+              </div>
+            </div>
+          </div>
+
+          {/* Detailed Info */}
+          <div className="p-8 md:p-10 space-y-10 bg-[#0D0D0E]">
+            {/* Topics */}
+            {repo.topics && repo.topics.length > 0 && (
+              <div>
+                <h4 className="text-[10px] text-slate-500 mono uppercase tracking-[0.2em] mb-4">Top Topics</h4>
+                <div className="flex flex-wrap gap-2">
+                  {repo.topics.map(topic => (
+                    <span key={topic} className="px-3 py-1.5 bg-indigo-500/5 border border-indigo-500/10 text-indigo-300 text-xs font-medium rounded-lg">
+                      {topic}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Timeline */}
+            <div className="grid grid-cols-2 gap-8">
+              <div className="space-y-3">
+                <h4 className="text-[10px] text-slate-500 mono uppercase tracking-[0.2em]">Created</h4>
+                <div className="flex items-center gap-2 text-slate-200">
+                  <Calendar size={16} className="text-slate-500" />
+                  <span className="text-sm font-medium">{formatDate(repo.created_at)}</span>
+                </div>
+              </div>
+              <div className="space-y-3">
+                <h4 className="text-[10px] text-slate-500 mono uppercase tracking-[0.2em]">Last Pushed</h4>
+                <div className="flex items-center gap-2 text-slate-200">
+                  <Clock size={16} className="text-slate-500" />
+                  <span className="text-sm font-medium">{formatDate(repo.updated_at)}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Technical Metadata */}
+            <div className="pt-6 border-t border-white/5 flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                {repo.language && (
+                  <div className="flex items-center gap-2">
+                    <span className="w-3 h-3 rounded-full bg-indigo-500" />
+                    <span className="text-sm text-slate-400 font-medium mono">{repo.language}</span>
+                  </div>
+                )}
+              </div>
+              <span className="text-[10px] text-slate-600 mono">ID: {repo.id}</span>
+            </div>
+          </div>
+        </div>
+      </MotionDiv>
+    </MotionDiv>
+  );
+};
+
 const RepoCard: React.FC<{
   repo: GithubRepo;
   isSaved: boolean;
   onToggleSave: (repo: GithubRepo) => void;
-}> = ({ repo, isSaved, onToggleSave }) => {
+  onClick: (repo: GithubRepo) => void;
+}> = ({ repo, isSaved, onToggleSave, onClick }) => {
   return (
     <MotionDiv
       layout
@@ -33,7 +271,8 @@ const RepoCard: React.FC<{
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, scale: 0.95 }}
       whileHover={{ y: -4 }}
-      className="group relative flex flex-col p-6 rounded-2xl border border-white/5 bg-white/[0.02] card-gradient transition-all duration-300"
+      onClick={() => onClick(repo)}
+      className="group relative flex flex-col p-6 rounded-2xl border border-white/5 bg-white/[0.02] card-gradient transition-all duration-300 cursor-pointer"
     >
       <div className="flex justify-between items-start mb-4">
         <div className="flex items-center gap-3">
@@ -92,14 +331,9 @@ const RepoCard: React.FC<{
           </div>
         </div>
 
-        <a 
-          href={repo.html_url}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-slate-500 hover:text-white transition-colors"
-        >
+        <div className="text-slate-500 hover:text-white transition-colors">
           <ExternalLink size={16} />
-        </a>
+        </div>
       </div>
 
       {/* Decorative accent */}
@@ -142,6 +376,7 @@ const App: React.FC = () => {
   const [hasMore, setHasMore] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearchFocused, setIsSearchFocused] = useState(false);
+  const [selectedRepo, setSelectedRepo] = useState<GithubRepo | null>(null);
   
   const observerTarget = useRef<HTMLDivElement>(null);
 
@@ -276,6 +511,17 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen pb-20">
+      <AnimatePresence>
+        {selectedRepo && (
+          <RepoDetailModal 
+            repo={selectedRepo} 
+            isSaved={!!savedRepos.find(r => r.id === selectedRepo.id)}
+            onToggleSave={toggleSave}
+            onClose={() => setSelectedRepo(null)}
+          />
+        )}
+      </AnimatePresence>
+
       {/* Navigation */}
       <header className="sticky top-0 z-50 glass">
         <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
@@ -342,7 +588,7 @@ const App: React.FC = () => {
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-6 pt-12">
         <div className="mb-10 flex flex-col md:flex-row md:items-end justify-between gap-6">
-          <div>
+          <div className="flex-1">
             <h1 className="text-3xl font-bold text-white mb-2">
               {navItems.find(n => n.id === activeTab)?.label}
             </h1>
@@ -384,6 +630,7 @@ const App: React.FC = () => {
                   repo={repo} 
                   isSaved={!!savedRepos.find(r => r.id === repo.id)}
                   onToggleSave={toggleSave}
+                  onClick={(r) => setSelectedRepo(r)}
                 />
               ))
             ) : !isLoading && (
