@@ -1,0 +1,7 @@
+{
+  "name": "Copy of GitGlance",
+  "description": "A premium, editorial-inspired dashboard for discovering the latest and trending GitHub repositories with AI-powered insights.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
