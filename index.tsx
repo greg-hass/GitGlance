@@ -2,23 +2,18 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import ReactDOM from 'react-dom/client';
 import { 
   Github, 
-  TrendingUp, 
   Sparkles, 
   Bookmark, 
   Search, 
   ExternalLink, 
   Star, 
   GitFork,
-  Menu,
   Loader2,
-  Eye,
-  Calendar,
   X,
   Clock,
   RefreshCw,
   CheckCircle2,
   Trash2,
-  Filter,
   Wand2,
   TrendingUp as TrendingUpIcon
 } from 'lucide-react';
@@ -95,6 +90,22 @@ const LANGUAGE_COLORS: Record<string, string> = {
 
 const getLanguageColor = (lang: string) => LANGUAGE_COLORS[lang] || "#8b949e";
 
+const aiInsightCache = new Map<number, string>();
+const languagesCache = new Map<string, Record<string, number>>();
+
+const getApiKey = () => {
+  const metaEnv = (import.meta as any)?.env ?? {};
+  const browserEnv = (window as any)?.process?.env ?? {};
+  const nodeEnv = typeof process !== 'undefined' ? (process as any).env ?? {} : {};
+  return (
+    metaEnv.VITE_GEMINI_API_KEY ||
+    metaEnv.VITE_GOOGLE_API_KEY ||
+    metaEnv.VITE_API_KEY ||
+    browserEnv.API_KEY ||
+    nodeEnv.API_KEY
+  );
+};
+
 const StarGrowthChart: React.FC<{ stargazersCount: number }> = ({ stargazersCount }) => {
   const data = useMemo(() => {
     const points = 30;
@@ -160,18 +171,32 @@ const AIInsight: React.FC<{ repo: GithubRepo }> = ({ repo }) => {
   const [loading, setLoading] = useState(false);
   useEffect(() => {
     const fetchInsight = async () => {
+      const cached = aiInsightCache.get(repo.id);
+      if (cached) {
+        setInsight(cached);
+        return;
+      }
+      const apiKey = getApiKey();
+      if (!apiKey) {
+        setInsight("Add a Gemini API key to unlock AI insights for this repository.");
+        return;
+      }
       setLoading(true);
       try {
-        const apiKey = (window as any).process?.env?.API_KEY || process.env.API_KEY;
-        if (!apiKey) throw new Error("No API key found");
         const ai = new GoogleGenAI({ apiKey });
         const response = await ai.models.generateContent({
           model: 'gemini-3-flash-preview',
           contents: `Expert technical insight (1 clever sentence) for GitHub repo: ${repo.name} - ${repo.description || "No description"}`,
           config: { temperature: 0.7, maxOutputTokens: 60 }
         });
-        setInsight(response.text || "A high-impact tool for modern developers.");
-      } catch (e) { setInsight("Trending repository with significant community momentum."); } finally { setLoading(false); }
+        const message = response.text || "A high-impact tool for modern developers.";
+        aiInsightCache.set(repo.id, message);
+        setInsight(message);
+      } catch (e) {
+        setInsight("Trending repository with significant community momentum.");
+      } finally {
+        setLoading(false);
+      }
     };
     fetchInsight();
   }, [repo.id]);
@@ -187,7 +212,33 @@ const RepoLanguages: React.FC<{ owner: string; name: string }> = ({ owner, name 
   const [languages, setLanguages] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
   useEffect(() => {
-    fetch(`https://api.github.com/repos/${owner}/${name}/languages`).then(r => r.json()).then(data => { setLanguages(data); setLoading(false); }).catch(() => setLoading(false));
+    const cacheKey = `${owner}/${name}`;
+    const cached = languagesCache.get(cacheKey);
+    if (cached) {
+      setLanguages(cached);
+      setLoading(false);
+      return;
+    }
+    const controller = new AbortController();
+    const loadLanguages = async () => {
+      try {
+        const response = await fetch(`https://api.github.com/repos/${owner}/${name}/languages`, { signal: controller.signal });
+        if (!response.ok) throw new Error("Failed to fetch languages");
+        const data = await response.json();
+        languagesCache.set(cacheKey, data);
+        setLanguages(data);
+      } catch (error) {
+        if (!controller.signal.aborted) {
+          console.error(error);
+        }
+      } finally {
+        if (!controller.signal.aborted) {
+          setLoading(false);
+        }
+      }
+    };
+    loadLanguages();
+    return () => controller.abort();
   }, [owner, name]);
   const total = Object.values(languages).reduce((a, b) => a + b, 0);
   const sortedLangs = Object.entries(languages).sort(([, a], [, b]) => b - a).slice(0, 6);
@@ -227,7 +278,7 @@ const RepoDetailModal: React.FC<{ repo: GithubRepo; isSaved: boolean; onToggleSa
             </div>
             <div className="flex gap-2 ml-auto">
               <button onClick={() => onToggleSave(repo)} className={`px-5 py-3 rounded-2xl transition-all font-medium text-sm ${isSaved ? 'text-indigo-400 bg-indigo-500/10 border border-indigo-500/20' : 'text-white bg-white/5 border border-white/10'}`}><Bookmark size={16} fill={isSaved ? "currentColor" : "none"} className="inline mr-2" />{isSaved ? "Saved" : "Save"}</button>
-              <a href={repo.html_url} target="_blank" className="px-5 py-3 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white font-medium text-sm transition-all"><ExternalLink size={16} className="inline mr-2" />View Source</a>
+              <a href={repo.html_url} target="_blank" rel="noopener noreferrer" className="px-5 py-3 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white font-medium text-sm transition-all"><ExternalLink size={16} className="inline mr-2" />View Source</a>
             </div>
           </div>
           <StarGrowthChart stargazersCount={repo.stargazers_count} />
@@ -283,12 +334,32 @@ const App: React.FC = () => {
   const [isSmartFilterMode, setIsSmartFilterMode] = useState(false);
   const [isAiFiltering, setIsAiFiltering] = useState(false);
   const [aiFilteredIds, setAiFilteredIds] = useState<number[] | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [selectedRepo, setSelectedRepo] = useState<GithubRepo | null>(null);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const observerTarget = useRef<HTMLDivElement>(null);
+  const requestController = useRef<AbortController | null>(null);
 
-  useEffect(() => { const s = localStorage.getItem('gg_saved'); if (s) setSavedRepos(JSON.parse(s)); }, []);
-  useEffect(() => { localStorage.setItem('gg_saved', JSON.stringify(savedRepos)); }, [savedRepos]);
+  const isAiEnabled = useMemo(() => Boolean(getApiKey()), []);
+  const savedRepoIds = useMemo(() => new Set(savedRepos.map(repo => repo.id)), [savedRepos]);
+
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem('gg_saved');
+      if (stored) setSavedRepos(JSON.parse(stored));
+    } catch (error) {
+      console.warn("Failed to read saved repos from storage.", error);
+    }
+  }, []);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('gg_saved', JSON.stringify(savedRepos));
+    } catch (error) {
+      console.warn("Failed to save repos to storage.", error);
+    }
+  }, [savedRepos]);
 
   const addToast = (m: string, t: 'success' | 'info' | 'error' = 'success') => { const id = Date.now(); setToasts(p => [...p, { id, message: m, type: t }]); };
   const removeToast = (id: number) => setToasts(p => p.filter(t => t.id !== id));
@@ -296,21 +367,49 @@ const App: React.FC = () => {
   const fetchRepos = useCallback(async (t: TabType, r: TimeRange, p: number) => {
     if (t === 'saved') return;
     if (p === 1) { setIsLoading(true); setAiFilteredIds(null); } else { setIsFetchingMore(true); }
+    requestController.current?.abort();
+    const controller = new AbortController();
+    requestController.current = controller;
     try {
+      setErrorMessage(null);
       const d = new Date();
       if (r === 'today') d.setDate(d.getDate() - 1); else if (r === 'week') d.setDate(d.getDate() - 7); else d.setMonth(d.getMonth() - 1);
       const fd = d.toISOString().split('T')[0];
       const q = t === 'trending' ? `created:>${fd} sort:stars-desc` : `pushed:>${fd} sort:updated-desc`;
-      const res = await fetch(`https://api.github.com/search/repositories?q=${q}&per_page=30&page=${p}`);
+      const res = await fetch(`https://api.github.com/search/repositories?q=${q}&per_page=30&page=${p}`, { signal: controller.signal });
+      if (!res.ok) {
+        const message = res.status === 403
+          ? "GitHub API rate limit hit. Please wait a bit or add an authenticated proxy."
+          : `GitHub API error (${res.status}).`;
+        throw new Error(message);
+      }
       const data = await res.json();
       if (data.items) {
         if (p === 1) setRepos(data.items); else setRepos(prev => [...prev, ...data.items.filter((ni: any) => !prev.find(pi => pi.id === ni.id))]);
         setHasMore(data.items.length === 30 && p < 15);
-      } else { setHasMore(false); }
-    } catch (e) { setHasMore(false); } finally { setIsLoading(false); setIsFetchingMore(false); }
+        setLastUpdated(new Date());
+      } else {
+        setHasMore(false);
+        setErrorMessage("Unexpected response from GitHub.");
+      }
+    } catch (e) {
+      if ((e as Error).name === 'AbortError') return;
+      setHasMore(false);
+      setErrorMessage(e instanceof Error ? e.message : "Failed to load repositories.");
+    } finally {
+      if (controller.signal.aborted) return;
+      setIsLoading(false);
+      setIsFetchingMore(false);
+    }
   }, []);
 
   useEffect(() => { setPage(1); setHasMore(true); setRepos([]); fetchRepos(activeTab, activeRange, 1); }, [activeTab, activeRange, fetchRepos]);
+  useEffect(() => {
+    if (activeTab === 'saved') {
+      setErrorMessage(null);
+    }
+  }, [activeTab]);
+  useEffect(() => () => requestController.current?.abort(), []);
 
   const loadMore = useCallback(() => { if (!isLoading && !isFetchingMore && hasMore && activeTab !== 'saved') { const np = page + 1; setPage(np); fetchRepos(activeTab, activeRange, np); } }, [isLoading, isFetchingMore, hasMore, activeTab, page, activeRange, fetchRepos]);
 
@@ -331,26 +430,55 @@ const App: React.FC = () => {
   const handleRefresh = () => { setPage(1); setHasMore(true); setRepos([]); setAiFilteredIds(null); fetchRepos(activeTab, activeRange, 1); addToast('Refreshed Feed'); };
 
   const runSmartFilter = async (q: string) => {
-    if (!q || q.length < 3) return;
+    const normalizedQuery = q.trim();
+    if (!normalizedQuery || normalizedQuery.length < 3) {
+      addToast("Enter at least 3 characters to filter.", "info");
+      return;
+    }
+    const apiKey = getApiKey();
+    if (!apiKey) {
+      addToast("Add a Gemini API key to enable Smart Filter.", "error");
+      return;
+    }
     setIsAiFiltering(true);
     try {
-      const ak = (window as any).process?.env?.API_KEY || process.env.API_KEY;
-      const ai = new GoogleGenAI({ apiKey: ak });
+      const ai = new GoogleGenAI({ apiKey });
       const res = await ai.models.generateContent({
         model: 'gemini-3-flash-preview',
-        contents: `Filter matching repository IDs for intent: "${q}" in data: ${JSON.stringify(repos.map(r => ({ id: r.id, name: r.name, desc: r.description })))}`,
+        contents: `Filter matching repository IDs for intent: "${normalizedQuery}" in data: ${JSON.stringify(repos.map(r => ({ id: r.id, name: r.name, desc: r.description })))}`,
         config: { responseMimeType: "application/json", responseSchema: { type: Type.ARRAY, items: { type: Type.INTEGER } } }
       });
       setAiFilteredIds(JSON.parse(res.text));
-    } catch (e) { addToast("Filter error", "error"); } finally { setIsAiFiltering(false); }
+    } catch (e) {
+      addToast("Filter error", "error");
+    } finally {
+      setIsAiFiltering(false);
+    }
+  };
+
+  const handleSearchSubmit = (event: React.FormEvent) => {
+    event.preventDefault();
+    if (isSmartFilterMode) {
+      runSmartFilter(searchQuery);
+    }
   };
 
   const filteredRepos = useMemo(() => {
     let res = activeTab === 'saved' ? savedRepos : repos;
     if (aiFilteredIds !== null) res = res.filter(r => aiFilteredIds.includes(r.id));
     if (!searchQuery || isSmartFilterMode) return res;
-    const low = searchQuery.toLowerCase();
-    return res.filter(r => r.name.toLowerCase().includes(low) || r.owner.login.toLowerCase().includes(low));
+    const query = searchQuery.trim().toLowerCase();
+    if (!query) return res;
+    return res.filter(r => {
+      const haystack = [
+        r.name,
+        r.owner.login,
+        r.description ?? '',
+        r.language ?? '',
+        ...(r.topics ?? [])
+      ];
+      return haystack.some(value => value.toLowerCase().includes(query));
+    });
   }, [activeTab, repos, savedRepos, searchQuery, aiFilteredIds, isSmartFilterMode]);
 
   const navItems = [{ id: 'trending', label: 'Trending', icon: TrendingUpIcon }, { id: 'latest', label: 'Latest', icon: Sparkles }, { id: 'saved', label: 'Saved', icon: Bookmark }];
@@ -360,7 +488,7 @@ const App: React.FC = () => {
       <div className="fixed bottom-28 md:bottom-8 right-6 z-[100] flex flex-col gap-2 pointer-events-none">
         <AnimatePresence>{toasts.map(t => <ToastItem key={t.id} toast={t} onDismiss={removeToast} />)}</AnimatePresence>
       </div>
-      <AnimatePresence>{selectedRepo && <RepoDetailModal repo={selectedRepo} isSaved={!!savedRepos.find(r => r.id === selectedRepo.id)} onToggleSave={toggleSave} onClose={() => setSelectedRepo(null)} />}</AnimatePresence>
+      <AnimatePresence>{selectedRepo && <RepoDetailModal repo={selectedRepo} isSaved={savedRepoIds.has(selectedRepo.id)} onToggleSave={toggleSave} onClose={() => setSelectedRepo(null)} />}</AnimatePresence>
       
       <header className="sticky top-0 z-50 glass header-border">
         <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
@@ -376,19 +504,68 @@ const App: React.FC = () => {
               </button>
             ))}
           </nav>
-          <div className="flex items-center gap-2">
+          <form onSubmit={handleSearchSubmit} className="flex items-center gap-2">
             <div className={`flex items-center bg-white/5 border border-white/5 rounded-xl px-3 py-1.5 transition-all ${isSmartFilterMode ? 'ring-1 ring-indigo-500/30' : ''}`}>
               {isAiFiltering ? <Loader2 size={16} className="text-indigo-400 animate-spin" /> : isSmartFilterMode ? <Sparkles size={16} className="text-indigo-400" /> : <Search size={16} className="text-slate-500" />}
-              <input type="text" placeholder={isSmartFilterMode ? "AI Goal..." : "Search..."} value={searchQuery} onChange={e => setSearchQuery(e.target.value)} onKeyDown={e => e.key === 'Enter' && runSmartFilter(searchQuery)} className="bg-transparent border-none outline-none text-sm ml-2 w-24 sm:w-48 text-slate-100 placeholder:text-slate-600" />
+              <input
+                type="text"
+                placeholder={isSmartFilterMode ? "Ask AI (e.g. devtools)" : "Search..."}
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                className="bg-transparent border-none outline-none text-sm ml-2 w-24 sm:w-48 text-slate-100 placeholder:text-slate-600"
+              />
             </div>
-            <button onClick={() => setIsSmartFilterMode(!isSmartFilterMode)} className={`p-2 rounded-xl border transition-all ${isSmartFilterMode ? 'bg-indigo-600 border-indigo-400 text-white shadow-lg shadow-indigo-500/20' : 'bg-white/5 border-white/5 text-slate-400'}`}><Wand2 size={18} /></button>
-          </div>
+            <button
+              type="button"
+              onClick={() => {
+                if (!isAiEnabled) {
+                  addToast("Add a Gemini API key to enable Smart Filter.", "error");
+                  return;
+                }
+                const nextMode = !isSmartFilterMode;
+                setIsSmartFilterMode(nextMode);
+                if (!nextMode) {
+                  setAiFilteredIds(null);
+                }
+              }}
+              disabled={!isAiEnabled}
+              title={isAiEnabled ? "Toggle Smart Filter" : "Add API key to enable AI"}
+              className={`p-2 rounded-xl border transition-all ${isSmartFilterMode ? 'bg-indigo-600 border-indigo-400 text-white shadow-lg shadow-indigo-500/20' : 'bg-white/5 border-white/5 text-slate-400'} ${!isAiEnabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+            >
+              <Wand2 size={18} />
+            </button>
+          </form>
         </div>
       </header>
 
       <main className="max-w-7xl mx-auto px-6 pt-10">
         <div className="mb-8 flex flex-col md:flex-row md:items-end justify-between gap-6">
-          <div><h1 className="text-3xl font-bold text-white mb-1">{navItems.find(n => n.id === activeTab)?.label}</h1><p className="text-slate-500">Discovering high-quality projects on GitHub.</p></div>
+          <div>
+            <h1 className="text-3xl font-bold text-white mb-1 flex items-center gap-3">
+              {navItems.find(n => n.id === activeTab)?.label}
+              {aiFilteredIds !== null && (
+                <span className="px-3 py-1 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-xs text-indigo-300 font-medium mono">
+                  AI Filtered
+                </span>
+              )}
+            </h1>
+            <p className="text-slate-500">Discovering high-quality projects on GitHub.</p>
+            <div className="mt-4 flex flex-wrap items-center gap-2 text-xs">
+              <span className="px-3 py-1 rounded-full bg-white/5 text-slate-300 border border-white/10">
+                {filteredRepos.length} results
+              </span>
+              {lastUpdated && (
+                <span className="px-3 py-1 rounded-full bg-white/5 text-slate-400 border border-white/10">
+                  Updated {getRelativeTimeString(lastUpdated.toISOString())}
+                </span>
+              )}
+              {!isAiEnabled && (
+                <span className="px-3 py-1 rounded-full bg-amber-500/10 text-amber-200 border border-amber-500/20">
+                  AI features disabled
+                </span>
+              )}
+            </div>
+          </div>
           {activeTab !== 'saved' && (
             <div className="flex items-center gap-3">
               <div className="flex bg-white/5 border border-white/5 p-1 rounded-xl">
@@ -398,8 +575,50 @@ const App: React.FC = () => {
             </div>
           )}
         </div>
+        {errorMessage && (
+          <div className="mb-6 rounded-2xl border border-rose-500/20 bg-rose-500/10 px-5 py-4 text-sm text-rose-100 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+            <div>
+              <p className="font-semibold">We hit a snag fetching repositories.</p>
+              <p className="text-rose-200/80">{errorMessage}</p>
+            </div>
+            <button onClick={handleRefresh} className="self-start md:self-auto px-4 py-2 rounded-xl bg-rose-500/20 hover:bg-rose-500/30 border border-rose-500/30 text-rose-50 transition">
+              Retry
+            </button>
+          </div>
+        )}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          <AnimatePresence mode="popLayout">{isLoading && page === 1 ? Array.from({ length: 6 }).map((_, i) => <SkeletonCard key={i} />) : filteredRepos.map(repo => <RepoCard key={repo.id} repo={repo} isSaved={!!savedRepos.find(r => r.id === repo.id)} onToggleSave={toggleSave} onClick={setSelectedRepo} />)}</AnimatePresence>
+          <AnimatePresence mode="popLayout">
+            {isLoading && page === 1 ? (
+              Array.from({ length: 6 }).map((_, i) => <SkeletonCard key={i} />)
+            ) : filteredRepos.length > 0 ? (
+              filteredRepos.map(repo => (
+                <RepoCard
+                  key={repo.id}
+                  repo={repo}
+                  isSaved={savedRepoIds.has(repo.id)}
+                  onToggleSave={toggleSave}
+                  onClick={setSelectedRepo}
+                />
+              ))
+            ) : (
+              <MotionDiv
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                className="col-span-full py-16 text-center text-slate-400 border border-white/5 rounded-2xl bg-white/[0.02]"
+              >
+                <h3 className="text-lg font-semibold text-slate-200 mb-2">No repositories found</h3>
+                <p className="text-sm text-slate-500">Try adjusting your filters, search terms, or time range.</p>
+                {(searchQuery || aiFilteredIds !== null) && (
+                  <button
+                    onClick={() => { setSearchQuery(''); setAiFilteredIds(null); }}
+                    className="mt-4 text-indigo-300 hover:text-indigo-200 text-sm font-medium"
+                  >
+                    Clear filters
+                  </button>
+                )}
+              </MotionDiv>
+            )}
+          </AnimatePresence>
         </div>
         {activeTab !== 'saved' && hasMore && <div ref={observerTarget} className="w-full h-24 flex items-center justify-center mt-8">{isFetchingMore && <Loader2 className="w-6 h-6 text-indigo-500 animate-spin" />}</div>}
       </main>
