@@ -1044,8 +1044,8 @@ Repositories to analyze: ${JSON.stringify(repoContext)}`,
               className="flex items-center gap-2 group cursor-pointer"
               onClick={() => handleRefresh()}
             >
-              <div className="w-8 h-8 rounded-lg flex items-center justify-center shadow-lg shadow-indigo-500/20 group-hover:scale-110 transition-transform overflow-hidden">
-                <img src="/icon.png" alt="GitGlance" className="w-full h-full object-cover" />
+              <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center text-white shadow-lg shadow-indigo-500/20 group-hover:scale-110 transition-transform">
+                <Github size={20} />
               </div>
               <span className="text-xl font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-white to-slate-400">
                 GitGlance
