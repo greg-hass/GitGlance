@@ -1015,7 +1015,7 @@ Repositories to analyze: ${JSON.stringify(repoContext)}`,
   ];
 
   return (
-    <div className="min-h-screen pb-20 pt-16 overflow-x-hidden">
+    <div className="min-h-screen pb-32 overflow-x-hidden relative" style={{ paddingTop: 'calc(64px + var(--safe-top))' }}>
       {/* Toast Notifications */}
       <div className="fixed bottom-24 md:bottom-8 right-6 z-[100] flex flex-col gap-2 pointer-events-none">
         <AnimatePresence>
@@ -1037,7 +1037,7 @@ Repositories to analyze: ${JSON.stringify(repoContext)}`,
       </AnimatePresence>
 
       {/* Navigation */}
-      <header className="fixed top-0 left-0 right-0 z-50 glass border-b border-white/5">
+      <header className="fixed-header glass border-b border-white/5">
         <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
           <div className="flex items-center gap-8">
             <div
@@ -1313,7 +1313,7 @@ Repositories to analyze: ${JSON.stringify(repoContext)}`,
       </main>
 
       {/* Mobile Nav */}
-      <div className="md:hidden fixed bottom-6 left-6 right-6 z-50">
+      <div className="md:hidden fixed bottom-6 left-6 right-6 z-50 mobile-nav-safe">
         <div className="glass border border-white/10 rounded-2xl flex justify-around p-3 shadow-2xl shadow-black/50">
           {navItems.map((item) => (
             <button
