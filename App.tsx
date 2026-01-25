@@ -1093,7 +1093,7 @@ Repositories to analyze: ${JSON.stringify(repoContext)}`,
                     ? "rgba(99,102,241,0.05)"
                     : "rgba(255,255,255,0.05)",
                 }}
-                className={`relative hidden sm:flex items-center border rounded-xl px-3 py-2 transition-all duration-300 shadow-sm ${
+                className={`relative flex items-center border rounded-xl px-3 py-2 transition-all duration-300 shadow-sm ${
                   isSearchFocused ? "ring-1 ring-indigo-500/20" : ""
                 }`}
               >
