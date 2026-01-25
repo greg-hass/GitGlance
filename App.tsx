@@ -1085,7 +1085,7 @@ Repositories to analyze: ${JSON.stringify(repoContext)}`,
             >
               <MotionDiv
                 animate={{
-                  width: isSearchFocused ? 240 : 150,
+                  width: isSearchFocused ? 180 : 120,
                   borderColor: isSmartFilterMode
                     ? "rgba(99,102,241,0.5)"
                     : "rgba(255,255,255,0.05)",
