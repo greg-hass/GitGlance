@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
     <title>GitGlance | GitHub Trending & Latest</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -18,16 +18,24 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <style>
+      :root {
+        --bg-color: #0a0a0b;
+      }
       html, body {
         width: 100%;
-        overflow-x: hidden;
-        position: relative;
-        touch-action: pan-y;
-        background-color: #0a0a0b;
-      }
-      body {
-        font-family: "Inter", sans-serif;
+        height: 100%;
+        margin: 0;
+        padding: 0;
+        background-color: var(--bg-color);
         color: #e2e8f0;
+        font-family: "Inter", sans-serif;
+        overflow-x: hidden;
+        -webkit-tap-highlight-color: transparent;
+      }
+      #root {
+        min-height: 100%;
+        display: flex;
+        flex-direction: column;
       }
       .mono {
         font-family: "JetBrains Mono", monospace;
@@ -36,7 +44,7 @@
         width: 8px;
       }
       ::-webkit-scrollbar-track {
-        background: #0a0a0b;
+        background: var(--bg-color);
       }
       ::-webkit-scrollbar-thumb {
         background: #27272a;
@@ -46,12 +54,12 @@
         background: #3f3f46;
       }
       .glass {
-        background: rgba(10, 10, 11, 0.8);
-        backdrop-filter: blur(16px);
-        -webkit-backdrop-filter: blur(16px);
+        background: rgba(10, 10, 11, 0.85);
+        backdrop-filter: blur(20px);
+        -webkit-backdrop-filter: blur(20px);
       }
       .header-border {
-        border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
       }
       .card-gradient {
         background: rgba(255, 255, 255, 0.02);
@@ -70,13 +78,6 @@
         box-shadow:
           0 10px 30px -10px rgba(0, 0, 0, 0.5),
           0 0 15px -5px rgba(99, 102, 241, 0.1);
-      }
-      .no-scrollbar::-webkit-scrollbar {
-        display: none;
-      }
-      .no-scrollbar {
-        -ms-overflow-style: none;
-        scrollbar-width: none;
       }
     </style>
     <script type="importmap">

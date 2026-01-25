@@ -1015,7 +1015,7 @@ Repositories to analyze: ${JSON.stringify(repoContext)}`,
   ];
 
   return (
-    <div className="min-h-screen pb-20">
+    <div className="min-h-screen pb-20 pt-16 overflow-x-hidden">
       {/* Toast Notifications */}
       <div className="fixed bottom-24 md:bottom-8 right-6 z-[100] flex flex-col gap-2 pointer-events-none">
         <AnimatePresence>
@@ -1037,7 +1037,7 @@ Repositories to analyze: ${JSON.stringify(repoContext)}`,
       </AnimatePresence>
 
       {/* Navigation */}
-      <header className="sticky top-0 z-50 glass">
+      <header className="fixed top-0 left-0 right-0 z-50 glass border-b border-white/5">
         <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
           <div className="flex items-center gap-8">
             <div
@@ -1085,7 +1085,7 @@ Repositories to analyze: ${JSON.stringify(repoContext)}`,
             >
               <MotionDiv
                 animate={{
-                  width: isSearchFocused ? 180 : 120,
+                  width: isSearchFocused ? 200 : 140,
                   borderColor: isSmartFilterMode
                     ? "rgba(99,102,241,0.5)"
                     : "rgba(255,255,255,0.05)",
