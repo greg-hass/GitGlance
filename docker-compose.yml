@@ -1,13 +1,7 @@
 services:
   gitglance:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      args:
-        # This will look for API_KEY in your .env file
-        - VITE_API_KEY=${API_KEY}
+    image: ghcr.io/greg-hass/gitglance:latest
     container_name: gitglance
+    restart: unless-stopped
     ports:
       - "8080:80"
-    restart: unless-stopped
-    # Note: Changes to .env require a rebuild: docker compose up -d --build
