@@ -1085,7 +1085,7 @@ Repositories to analyze: ${JSON.stringify(repoContext)}`,
             >
               <MotionDiv
                 animate={{
-                  width: isSearchFocused ? 320 : 200,
+                  width: isSearchFocused ? 240 : 150,
                   borderColor: isSmartFilterMode
                     ? "rgba(99,102,241,0.5)"
                     : "rgba(255,255,255,0.05)",
@@ -1112,8 +1112,8 @@ Repositories to analyze: ${JSON.stringify(repoContext)}`,
                   type="text"
                   placeholder={
                     isSmartFilterMode
-                      ? "Ask AI (e.g. 'performance tools')..."
-                      : "Find a repository..."
+                      ? "Ask AI..."
+                      : "Search..."
                   }
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
@@ -1162,9 +1162,7 @@ Repositories to analyze: ${JSON.stringify(repoContext)}`,
               </button>
             </form>
 
-            <button className="md:hidden text-slate-400 hover:text-white">
-              <Menu size={24} />
-            </button>
+
           </div>
         </div>
       </header>
