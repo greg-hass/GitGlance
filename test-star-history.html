@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Star History Test</title>
+    <style>
+        body {
+            font-family: 'JetBrains Mono', monospace;
+            background: #0a0a0b;
+            color: #e2e8f0;
+            padding: 20px;
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        .test-section {
+            background: rgba(255,255,255,0.02);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        button {
+            background: #6366f1;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-family: inherit;
+            margin-right: 10px;
+            margin-bottom: 10px;
+        }
+        button:hover {
+            background: #4f46e5;
+        }
+        .result {
+            background: rgba(0,0,0,0.3);
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 15px;
+            white-space: pre-wrap;
+            font-size: 12px;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .error {
+            color: #f87171;
+        }
+        .success {
+            color: #34d399;
+        }
+        .loading {
+            color: #818cf8;
+        }
+        .progress-bar {
+            width: 100%;
+            height: 4px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 2px;
+            margin-top: 10px;
+            overflow: hidden;
+        }
+        .progress-fill {
+            height: 100%;
+            background: #6366f1;
+            transition: width 0.3s;
+        }
+    </style>
+</head>
+<body>
+    <h1>Star History API Test</h1>
+    
+    <div class="test-section">
+        <h2>Test 1: Small Repo (< 1k stars)</h2>
+        <button onclick="testSmallRepo()">Test facebook/react (242k stars)</button>
+        <button onclick="testMediumRepo()">Test vercel/next.js (129k stars)</button>
+        <button onclick="testSmallRepo2()">Test small repo</button>
+        <div id="result1" class="result" style="display:none"></div>
+    </div>
+    
+    <div class="test-section">
+        <h2>Test 2: Cache Test</h2>
+        <button onclick="testCache()">Test Cache (fetch same repo twice)</button>
+        <div id="result2" class="result" style="display:none"></div>
+    </div>
+    
+    <div class="test-section">
+        <h2>Test 3: Clear Cache</h2>
+        <button onclick="clearCache()">Clear All Star History Cache</button>
+        <div id="result3" class="result" style="display:none"></div>
+    </div>
+
+    <script>
+        // Simulated fetchStarHistory function for testing
+        const CACHE_KEY_PREFIX = 'gg-stars-';
+        const CACHE_DURATION = 12 * 60 * 60 * 1000;
+        const MAX_PAGES = 100;
+        const PER_PAGE = 100;
+
+        function getCacheKey(owner, repo) {
+            return `${CACHE_KEY_PREFIX}${owner}/${repo}`;
+        }
+
+        function getCachedData(owner, repo) {
+            const cached = localStorage.getItem(getCacheKey(owner, repo));
+            if (!cached) return null;
+            
+            const entry = JSON.parse(cached);
+            if (Date.now() - entry.timestamp > CACHE_DURATION) {
+                localStorage.removeItem(getCacheKey(owner, repo));
+                return null;
+            }
+            return entry.data;
+        }
+
+        function setCachedData(owner, repo, data) {
+            const entry = {
+                data,
+                timestamp: Date.now(),
+            };
+            localStorage.setItem(getCacheKey(owner, repo), JSON.stringify(entry));
+        }
+
+        async function fetchStarHistory(owner, repo, onProgress) {
+            const cached = getCachedData(owner, repo);
+            if (cached) {
+                return { data: cached, isPartial: false, fromCache: true };
+            }
+
+            const repoRes = await fetch(`https://api.github.com/repos/${owner}/${repo}`);
+            if (!repoRes.ok) {
+                throw new Error(repoRes.status === 403 ? 'Rate limit exceeded' : `Failed: ${repoRes.statusText}`);
+            }
+            
+            const repoData = await repoRes.json();
+            const totalStars = repoData.stargazers_count;
+            const totalPages = Math.min(Math.ceil(totalStars / PER_PAGE), MAX_PAGES);
+            const isPartial = totalStars > MAX_PAGES * PER_PAGE;
+
+            const allStargazers = [];
+            
+            for (let page = 1; page <= totalPages; page++) {
+                const response = await fetch(
+                    `https://api.github.com/repos/${owner}/${repo}/stargazers?page=${page}&per_page=${PER_PAGE}`,
+                    { headers: { 'Accept': 'application/vnd.github.v3.star+json' } }
+                );
+
+                if (!response.ok) {
+                    throw new Error(`Page ${page} failed: ${response.statusText}`);
+                }
+
+                const stargazers = await response.json();
+                allStargazers.push(...stargazers);
+                
+                onProgress?.({
+                    loaded: allStargazers.length,
+                    total: Math.min(totalStars, MAX_PAGES * PER_PAGE),
+                    currentPage: page,
+                    totalPages,
+                });
+
+                if (stargazers.length < PER_PAGE) break;
+            }
+
+            const dateCounts = new Map();
+            allStargazers.forEach(user => {
+                const date = user.starred_at.split('T')[0];
+                dateCounts.set(date, (dateCounts.get(date) || 0) + 1);
+            });
+
+            const sortedDates = Array.from(dateCounts.entries())
+                .sort((a, b) => new Date(a[0]) - new Date(b[0]));
+            
+            let cumulative = 0;
+            const history = sortedDates.map(([date, count]) => {
+                cumulative += count;
+                return { date, count: cumulative };
+            });
+
+            setCachedData(owner, repo, history);
+            return { data: history, isPartial, fromCache: false };
+        }
+
+        async function testSmallRepo() {
+            const resultDiv = document.getElementById('result1');
+            resultDiv.style.display = 'block';
+            resultDiv.innerHTML = '<span class="loading">Loading facebook/react...</span>';
+            
+            try {
+                const result = await fetchStarHistory('facebook', 'react', (p) => {
+                    const percent = (p.currentPage / p.totalPages * 100).toFixed(1);
+                    resultDiv.innerHTML = `
+                        <span class="loading">Loading: Page ${p.currentPage} of ${p.totalPages} (${percent}%)...</span>
+                        <div class="progress-bar"><div class="progress-fill" style="width: ${percent}%"></div></div>
+                    `;
+                });
+                
+                const last30 = result.data.slice(-30);
+                resultDiv.innerHTML = `
+                    <span class="success">✓ Success! ${result.fromCache ? '(from cache)' : '(fetched)'}</span>
+                    <br>Total data points: ${result.data.length}
+                    <br>Showing last 30 days
+                    <br>Is partial (capped at 10k): ${result.isPartial}
+                    <br><br>Sample data:
+                    ${JSON.stringify(last30.slice(0, 5), null, 2)}
+                `;
+            } catch (err) {
+                resultDiv.innerHTML = `<span class="error">✗ Error: ${err.message}</span>`;
+            }
+        }
+
+        async function testMediumRepo() {
+            const resultDiv = document.getElementById('result1');
+            resultDiv.style.display = 'block';
+            resultDiv.innerHTML = '<span class="loading">Loading vercel/next.js...</span>';
+            
+            try {
+                const result = await fetchStarHistory('vercel', 'next.js', (p) => {
+                    const percent = (p.currentPage / p.totalPages * 100).toFixed(1);
+                    resultDiv.innerHTML = `
+                        <span class="loading">Loading: Page ${p.currentPage} of ${p.totalPages} (${percent}%)...</span>
+                        <div class="progress-bar"><div class="progress-fill" style="width: ${percent}%"></div></div>
+                    `;
+                });
+                
+                const last30 = result.data.slice(-30);
+                resultDiv.innerHTML = `
+                    <span class="success">✓ Success! ${result.fromCache ? '(from cache)' : '(fetched)'}</span>
+                    <br>Total data points: ${result.data.length}
+                    <br>Is partial (capped at 10k): ${result.isPartial}
+                    <br><br>Sample data:
+                    ${JSON.stringify(last30.slice(0, 5), null, 2)}
+                `;
+            } catch (err) {
+                resultDiv.innerHTML = `<span class="error">✗ Error: ${err.message}</span>`;
+            }
+        }
+
+        async function testSmallRepo2() {
+            const resultDiv = document.getElementById('result1');
+            resultDiv.style.display = 'block';
+            resultDiv.innerHTML = '<span class="loading">Loading test repo...</span>';
+            
+            try {
+                const result = await fetchStarHistory('greg-hass', 'gitglance', (p) => {
+                    resultDiv.innerHTML = `<span class="loading">Loading: Page ${p.currentPage} of ${p.totalPages}...</span>`;
+                });
+                
+                resultDiv.innerHTML = `
+                    <span class="success">✓ Success! ${result.fromCache ? '(from cache)' : '(fetched)'}</span>
+                    <br>Total data points: ${result.data.length}
+                    <br><br>All data:
+                    ${JSON.stringify(result.data, null, 2)}
+                `;
+            } catch (err) {
+                resultDiv.innerHTML = `<span class="error">✗ Error: ${err.message}</span>`;
+            }
+        }
+
+        async function testCache() {
+            const resultDiv = document.getElementById('result2');
+            resultDiv.style.display = 'block';
+            resultDiv.innerHTML = '<span class="loading">Testing cache...</span>';
+            
+            try {
+                const start1 = performance.now();
+                const result1 = await fetchStarHistory('facebook', 'react');
+                const time1 = (performance.now() - start1).toFixed(2);
+                
+                const start2 = performance.now();
+                const result2 = await fetchStarHistory('facebook', 'react');
+                const time2 = (performance.now() - start2).toFixed(2);
+                
+                resultDiv.innerHTML = `
+                    <span class="success">✓ Cache test complete!</span>
+                    <br>First fetch: ${time1}ms (from API)
+                    <br>Second fetch: ${time2}ms (from cache)
+                    <br>Speedup: ${(time1/time2).toFixed(1)}x faster
+                `;
+            } catch (err) {
+                resultDiv.innerHTML = `<span class="error">✗ Error: ${err.message}</span>`;
+            }
+        }
+
+        function clearCache() {
+            const resultDiv = document.getElementById('result3');
+            resultDiv.style.display = 'block';
+            
+            let count = 0;
+            Object.keys(localStorage)
+                .filter(key => key.startsWith(CACHE_KEY_PREFIX))
+                .forEach(key => {
+                    localStorage.removeItem(key);
+                    count++;
+                });
+            
+            resultDiv.innerHTML = `<span class="success">✓ Cleared ${count} cached entries</span>`;
+        }
+    </script>
+</body>
+</html>

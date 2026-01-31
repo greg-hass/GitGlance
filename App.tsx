@@ -32,6 +32,7 @@ import {
 import { motion, AnimatePresence } from "framer-motion";
 import { GoogleGenAI, Type } from "@google/genai";
 import { GithubRepo, TabType, SavedRepo } from "./types";
+import { fetchStarHistory, clearCacheForRepo, FetchProgress } from "./src/services/starHistory";
 import {
   AreaChart,
   Area,
@@ -105,31 +106,119 @@ const LANGUAGE_COLORS: Record<string, string> = {
 const getLanguageColor = (lang: string) => LANGUAGE_COLORS[lang] || "#8b949e";
 
 // Star Growth Chart Component
-const StarGrowthChart: React.FC<{ stargazersCount: number }> = ({
-  stargazersCount,
-}) => {
-  const data = useMemo(() => {
-    const points = 30;
-    const chartData = [];
-    let currentStars = stargazersCount;
-    const now = new Date();
+const StarGrowthChart: React.FC<{
+  stargazersCount: number;
+  owner: string;
+  name: string;
+}> = ({ stargazersCount, owner, name }) => {
+  const [data, setData] = useState<Array<{ name: string; stars: number }>>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [progress, setProgress] = useState<FetchProgress | null>(null);
+  const [isPartial, setIsPartial] = useState(false);
 
-    for (let i = points; i >= 0; i--) {
-      const date = new Date(now);
-      date.setDate(date.getDate() - i);
-      // Simulate historical growth
-      // We assume about 0.1% to 1% growth daily for trending repos
-      const growthFactor = 1 - i * (Math.random() * 0.005 + 0.002);
-      chartData.push({
-        name: date.toLocaleDateString("en-US", {
+  const loadData = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    setProgress(null);
+
+    try {
+      const result = await fetchStarHistory(owner, name, (p) => {
+        setProgress(p);
+      });
+
+      setIsPartial(result.isPartial);
+
+      // Transform to chart format (last 30 data points)
+      const chartData = result.data.slice(-30).map((point) => ({
+        name: new Date(point.date).toLocaleDateString("en-US", {
           month: "short",
           day: "numeric",
         }),
-        stars: Math.floor(stargazersCount * growthFactor),
-      });
+        stars: point.count,
+      }));
+
+      setData(chartData);
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Failed to load star history"
+      );
+    } finally {
+      setLoading(false);
     }
-    return chartData;
-  }, [stargazersCount]);
+  }, [owner, name]);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  const handleRetry = () => {
+    clearCacheForRepo(owner, name);
+    loadData();
+  };
+
+  if (loading) {
+    return (
+      <div className="w-full h-[240px] mt-6 mb-10">
+        <div className="flex items-center justify-between mb-4">
+          <h4 className="text-[10px] text-slate-500 mono uppercase tracking-[0.2em] flex items-center gap-2">
+            <TrendingUpIcon size={14} className="text-indigo-400" />
+            Fetching star history...
+          </h4>
+        </div>
+        <div className="w-full h-full bg-white/[0.02] border border-white/5 rounded-2xl p-4 flex flex-col items-center justify-center">
+          <Loader2 className="w-8 h-8 text-indigo-500 animate-spin mb-4" />
+          {progress && (
+            <>
+              <p className="text-sm text-slate-500 mb-2">
+                Page {progress.currentPage} of {progress.totalPages}
+              </p>
+              <p className="text-xs text-slate-600">
+                {progress.loaded.toLocaleString()} stars loaded
+              </p>
+              <div className="w-64 h-2 bg-white/5 rounded-full mt-4 overflow-hidden">
+                <div
+                  className="h-full bg-indigo-500 transition-all duration-300"
+                  style={{
+                    width: `${(progress.currentPage / progress.totalPages) * 100}%`,
+                  }}
+                />
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="w-full h-[240px] mt-6 mb-10">
+        <div className="flex items-center justify-between mb-4">
+          <h4 className="text-[10px] text-slate-500 mono uppercase tracking-[0.2em] flex items-center gap-2">
+            <TrendingUpIcon size={14} className="text-indigo-400" />
+            Star Growth (30 Days)
+          </h4>
+        </div>
+        <div className="w-full h-full bg-white/[0.02] border border-white/5 rounded-2xl p-4 flex flex-col items-center justify-center">
+          <X size={32} className="text-rose-400 mb-4" />
+          <p className="text-sm text-slate-300 mb-2">
+            Unable to load star history
+          </p>
+          <p className="text-xs text-slate-500 text-center max-w-xs">
+            {error}
+          </p>
+          <button
+            onClick={handleRetry}
+            className="mt-4 px-4 py-2 bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 rounded-lg text-sm hover:bg-indigo-500/20 transition-colors flex items-center gap-2"
+          >
+            <RefreshCw size={14} />
+            Try Again
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="w-full h-[240px] mt-6 mb-10">
@@ -137,7 +226,13 @@ const StarGrowthChart: React.FC<{ stargazersCount: number }> = ({
         <h4 className="text-[10px] text-slate-500 mono uppercase tracking-[0.2em] flex items-center gap-2">
           <TrendingUpIcon size={14} className="text-indigo-400" />
           Star Growth (30 Days)
+          <span className="text-[10px] text-emerald-400/70 ml-2">Live Data</span>
         </h4>
+        {isPartial && (
+          <span className="text-[10px] text-amber-400/70">
+            Showing first 10,000 stars
+          </span>
+        )}
       </div>
       <div className="w-full h-full bg-white/[0.02] border border-white/5 rounded-2xl p-4">
         <ResponsiveContainer width="100%" height="100%">
@@ -505,7 +600,11 @@ const RepoDetailModal: React.FC<{
           {/* Detailed Info */}
           <div className="p-8 md:p-10 space-y-10 bg-[#0D0D0E]">
             {/* Growth Chart Section */}
-            <StarGrowthChart stargazersCount={repo.stargazers_count} />
+            <StarGrowthChart 
+              stargazersCount={repo.stargazers_count}
+              owner={repo.owner.login}
+              name={repo.name}
+            />
 
             {/* Languages Section */}
             <RepoLanguages owner={repo.owner.login} name={repo.name} />
