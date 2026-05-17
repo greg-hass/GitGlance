@@ -11,9 +11,12 @@ export class GitHubApiError extends Error {
   }
 }
 
-export async function fetchGitHubJson<T>(url: string): Promise<T> {
+export async function fetchGitHubJson<T>(
+  url: string,
+  headers: HeadersInit = {},
+): Promise<T> {
   const response = await fetch(url, {
-    headers: { Accept: 'application/vnd.github+json' },
+    headers: { Accept: 'application/vnd.github+json', ...headers },
   });
 
   if (!response.ok) {

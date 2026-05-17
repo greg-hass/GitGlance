@@ -6,6 +6,7 @@ import { formatDate } from '../lib/date';
 import { getLanguageColor } from '../lib/languageColors';
 import { RepoLanguages } from './RepoLanguages';
 import { RepoActivitySummary } from './RepoActivitySummary';
+import { StarGrowthChart } from './StarGrowthChart';
 import type { GithubRepo } from '../types';
 
 export const RepoDetailModal: React.FC<{
@@ -105,6 +106,7 @@ export const RepoDetailModal: React.FC<{
           </div>
 
           <div className="p-8 md:p-10 space-y-10 bg-[#0D0D0E]">
+            <StarGrowthChart owner={repo.owner.login} name={repo.name} />
             <RepoActivitySummary repo={repo} />
             <RepoLanguages owner={repo.owner.login} name={repo.name} />
 
