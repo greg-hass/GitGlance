@@ -1,4 +1,3 @@
-
 export interface GithubRepo {
   id: number;
   name: string;
@@ -24,3 +23,11 @@ export type TabType = 'trending' | 'latest' | 'saved';
 export interface SavedRepo extends GithubRepo {
   savedAt: number;
 }
+
+export interface Toast {
+  id: number;
+  message: string;
+  type: 'success' | 'info' | 'error';
+}
+
+export type TimeRange = 'today' | 'week' | 'month';
