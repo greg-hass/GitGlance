@@ -1,5 +1,9 @@
 # GitGlance
 
+> **Project status:** GitGlance has graduated into [RepoRadar](https://github.com/greg-hass/reporadar), the maintained product. Use RepoRadar for new features, fixes, durable star history, riser tracking, and the zero-config lite mode.
+>
+> This repository is kept as a historical lightweight client-only version. It is no longer the primary product.
+
 A self-hosted dashboard for discovering trending and latest GitHub repositories. Browse, save, and explore projects with a clean, dark-themed interface.
 
 ## Features
